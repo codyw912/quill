@@ -27,7 +27,6 @@ let package = Package(
                 "QuillCapture",
                 "QuillTranscribe",
                 .product(name: "ArgumentParser", package: "swift-argument-parser"),
-                .product(name: "FluidAudio", package: "FluidAudio"),
             ],
             exclude: ["Info.plist"],
             linkerSettings: [
