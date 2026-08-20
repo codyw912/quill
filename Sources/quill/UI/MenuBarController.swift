@@ -67,21 +67,49 @@ final class MenuBarController {
         statusItem.menu = menu
 
         if let button = statusItem.button {
-            let image = Self.featherImage()
-            image?.isTemplate = true
-            button.image = image
+            button.image = Self.idleImage
             button.imagePosition = .imageLeft
         }
     }
 
-    /// Reflect recording state in the icon tint and menu item titles. The
-    /// menu bar shows only the feather (red while recording); the elapsed
-    /// counter lives in the menu's state label. Call once a second while
-    /// recording.
+    /// Reflect recording state in the icon tint, the menu bar title, and the
+    /// menu item titles. The counter sits beside the feather so elapsed time is
+    /// readable at a glance without opening the menu; idle shows the icon
+    /// alone, so the width cost is paid only while recording. Call once a
+    /// second while recording.
     func update(recording: Bool, elapsed: String?) {
-        stateLabel.title = recording ? "● recording · \(elapsed ?? "0:00")" : "idle"
+        let counter = elapsed ?? "0:00"
+        stateLabel.title = recording ? "● recording · \(counter)" : "idle"
         toggleItem.title = recording ? "Stop recording" : "Start recording"
-        statusItem.button?.contentTintColor = recording ? .systemRed : nil
+        if let button = statusItem.button {
+            // The menu bar is a vibrant appearance, where a template image is
+            // drawn as a mask in the system-determined colour — vibrancy
+            // discards contentTintColor, so the feather came out monochrome
+            // (and black, since the SVG's `currentColor` strokes rasterise
+            // black). Swap in a non-template image with the colour baked in;
+            // those render their own pixels and are unaffected.
+            button.image = recording ? Self.recordingImage : Self.idleImage
+            // The red feather is the state signal; the digits are data, so
+            // they stay in the normal menu bar colour — systemRed is a
+            // saturated indicator colour and hard to read as text. The colour
+            // is set explicitly because an attributedTitle renders with its
+            // own attributes and inherits nothing from the button.
+            //
+            // Monospaced digits, or the title reflows every time a digit
+            // changes width and the whole menu bar jitters once a second.
+            button.attributedTitle = recording
+                ? NSAttributedString(
+                    string: " \(counter)",
+                    attributes: [
+                        .font: NSFont.monospacedDigitSystemFont(
+                            ofSize: NSFont.smallSystemFontSize,
+                            weight: .regular
+                        ),
+                        .foregroundColor: NSColor.labelColor,
+                    ]
+                )
+                : NSAttributedString(string: "")
+        }
     }
 
     /// Show transcription progress/failure as a second status line in the
@@ -98,6 +126,34 @@ final class MenuBarController {
     func updateWarning(_ text: String?) {
         warningLabel.title = text ?? ""
         warningLabel.isHidden = text == nil
+    }
+
+    /// Idle: a template image, so the system paints it to match the menu bar
+    /// in either appearance. Recording: colour baked in, template off.
+    private static let idleImage: NSImage? = {
+        let image = featherImage()
+        image?.isTemplate = true
+        return image
+    }()
+
+    private static let recordingImage: NSImage? = {
+        guard let base = featherImage() else { return nil }
+        return tinted(base, with: .systemRed)
+    }()
+
+    /// Repaint an image's opaque pixels in `color`. Works off the alpha
+    /// channel, so it doesn't matter what colour the source rasterised to —
+    /// which is the point, since the SVG's `currentColor` gives us black.
+    private static func tinted(_ image: NSImage, with color: NSColor) -> NSImage {
+        let out = NSImage(size: image.size)
+        out.lockFocus()
+        let rect = NSRect(origin: .zero, size: image.size)
+        image.draw(in: rect)
+        color.set()
+        rect.fill(using: .sourceAtop)
+        out.unlockFocus()
+        out.isTemplate = false
+        return out
     }
 
     // Inlined Lucide feather SVG. Keeping it in source means the executable

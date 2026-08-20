@@ -138,9 +138,15 @@ final class AppController {
         }
 
         menuBar.update(recording: true, elapsed: "0:00")
-        ticker = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
+        // .common, not the default mode: an open NSMenu puts the main run loop
+        // into NSEventTrackingRunLoopMode, where a default-mode timer stops
+        // firing — freezing the elapsed counter exactly while the user is
+        // looking at it.
+        let ticker = Timer(timeInterval: 1, repeats: true) { [weak self] _ in
             MainActor.assumeIsolated { self?.tick() }
         }
+        RunLoop.main.add(ticker, forMode: .common)
+        self.ticker = ticker
     }
 
     private func stopSession() {
