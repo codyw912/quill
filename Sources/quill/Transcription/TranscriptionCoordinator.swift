@@ -1,4 +1,5 @@
 import Foundation
+import QuillCapture
 import Synchronization
 
 /// Post-recording pipeline: a serial queue of session folders to transcribe.

@@ -2,7 +2,7 @@ import Foundation
 
 /// Best-effort user-visible notification. osascript keeps us free of
 /// UserNotifications entitlement requirements (which need an app bundle).
-func notifyUser(title: String, body: String) {
+public func notifyUser(title: String, body: String) {
     func quoted(_ s: String) -> String {
         "\"" + s.replacingOccurrences(of: "\\", with: "\\\\")
             .replacingOccurrences(of: "\"", with: "\\\"") + "\""

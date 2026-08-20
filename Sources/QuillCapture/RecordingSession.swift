@@ -4,9 +4,9 @@ import Foundation
 /// (mic = you, system = them) plus a meta.json written on clean stop. Tracks
 /// are separate on purpose — whisper does better on clean single-source audio,
 /// and two tracks give free two-party diarization.
-final class RecordingSession {
-    let dir: URL
-    let startedAt = Date()
+public final class RecordingSession {
+    public let dir: URL
+    public let startedAt = Date()
 
     private let mic = MicRecorder()
     private let system = SystemAudioRecorder()
@@ -15,12 +15,12 @@ final class RecordingSession {
     /// unauthorized tap yields correctly-clocked silence rather than an error,
     /// so this staying false is how a missing system-audio grant announces
     /// itself. See .issues/rca-002.
-    var systemTrackHasSignal: Bool { system.hasSignal }
+    public var systemTrackHasSignal: Bool { system.hasSignal }
 
     /// True once the mic has captured any non-zero sample. `MicRecorder` can
     /// self-heal one known silent route (rca-001) but not the rest, so a mic
     /// track that stays digitally silent still needs surfacing.
-    var micTrackHasSignal: Bool { mic.hasSignal }
+    public var micTrackHasSignal: Bool { mic.hasSignal }
 
     private static let folderFormat: DateFormatter = {
         let f = DateFormatter()
@@ -31,7 +31,7 @@ final class RecordingSession {
 
     /// Create the session folder under `root` (yyyy.MM.dd-HHmm, suffixed on
     /// collision) without starting capture yet.
-    init(root: URL) throws {
+    public init(root: URL) throws {
         let base = Self.folderFormat.string(from: startedAt)
         var candidate = root.appendingPathComponent(base, isDirectory: true)
         var n = 2
@@ -45,7 +45,7 @@ final class RecordingSession {
 
     /// Start both tracks. If the mic fails after the system tap started, the
     /// tap is torn down so we never run half a session silently.
-    func start() throws {
+    public func start() throws {
         try system.start(writingTo: dir.appendingPathComponent("system.caf"))
         do {
             try mic.start(writingTo: dir.appendingPathComponent("mic.caf"))
@@ -56,7 +56,7 @@ final class RecordingSession {
     }
 
     /// Stop both tracks and write meta.json.
-    func stop() {
+    public func stop() {
         mic.stop()
         system.stop()
 

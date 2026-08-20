@@ -13,7 +13,7 @@ import Foundation
 /// ~/Recordings. `on_stop` is a shell command spawned with the session
 /// directory as its argument — after the transcript is written, or right
 /// after recording when transcription is disabled.
-enum Config {
+public enum Config {
     static let path = FileManager.default.homeDirectoryForCurrentUser
         .appendingPathComponent(".config/quill/config.json")
 
@@ -28,19 +28,19 @@ enum Config {
 
     /// Shell command to spawn after each session's transcript is written (or
     /// after recording, if transcription is disabled), or nil.
-    static func onStop() -> String? {
+    public static func onStop() -> String? {
         guard let cmd = load()?["on_stop"] as? String, !cmd.isEmpty else { return nil }
         return cmd
     }
 
     /// Whether finished recordings are transcribed automatically. Default on.
-    static func transcriptionEnabled() -> Bool {
+    public static func transcriptionEnabled() -> Bool {
         transcription()?["enabled"] as? Bool ?? true
     }
 
     /// Configured engine name. Only "parakeet" ships today; the coordinator
     /// warns and falls back for anything else.
-    static func transcriptionEngine() -> String {
+    public static func transcriptionEngine() -> String {
         transcription()?["engine"] as? String ?? "parakeet"
     }
 
@@ -75,7 +75,7 @@ enum Config {
     }
 
     /// Resolve the recordings root from an optional CLI override.
-    static func resolveRoot(cliOverride: String?) -> URL {
+    public static func resolveRoot(cliOverride: String?) -> URL {
         if let cliOverride {
             return URL(
                 fileURLWithPath: (cliOverride as NSString).expandingTildeInPath,

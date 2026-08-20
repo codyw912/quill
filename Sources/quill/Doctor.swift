@@ -2,6 +2,7 @@ import AVFoundation
 import Darwin
 import FluidAudio
 import Foundation
+import QuillCapture
 
 enum CheckStatus {
     case ok

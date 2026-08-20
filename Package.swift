@@ -4,14 +4,19 @@ import PackageDescription
 let package = Package(
     name: "quill",
     platforms: [.macOS(.v15)],
+    products: [
+        .library(name: "QuillCapture", targets: ["QuillCapture"]),
+    ],
     dependencies: [
         .package(url: "https://github.com/apple/swift-argument-parser.git", from: "1.3.0"),
         .package(url: "https://github.com/FluidInference/FluidAudio.git", from: "0.7.0"),
     ],
     targets: [
+        .target(name: "QuillCapture"),
         .executableTarget(
             name: "quill",
             dependencies: [
+                "QuillCapture",
                 .product(name: "ArgumentParser", package: "swift-argument-parser"),
                 .product(name: "FluidAudio", package: "FluidAudio"),
             ],
