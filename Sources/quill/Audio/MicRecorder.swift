@@ -1,5 +1,7 @@
+import Accelerate
 import AVFoundation
 import Foundation
+import Synchronization
 
 /// Records the default input device to a file via AVAudioEngine, encoding AAC
 /// mono. Buffers stream straight to disk — nothing is held in memory, so
@@ -40,6 +42,17 @@ final class MicRecorder: @unchecked Sendable {
     private var livenessFrames = 0
     private var livenessPeak: Float = 0
     private var livenessSettled = false
+
+    /// Set once any non-zero sample reaches the file, on either tap path.
+    /// The liveness check above is narrower on purpose — it covers the first
+    /// second of the voice-processing route, which has a recovery (restart
+    /// raw). This latch is the whole-session, both-paths question the app
+    /// asks when it wants to know whether the track is usable at all, and it
+    /// mirrors `SystemAudioRecorder.hasSignal`.
+    private let signalSeen = Mutex(false)
+
+    /// True once the mic has captured any audible sample this session.
+    var hasSignal: Bool { signalSeen.withLock { $0 } }
 
     /// Start capturing the mic, encoding AAC into `url` (use a .caf extension
     /// — CAF needs no finalization pass, so a crash loses nothing written).
@@ -171,6 +184,7 @@ final class MicRecorder: @unchecked Sendable {
                     }
                 }
             }
+            self.noteSignal(in: buffer)
 
             do {
                 try file.write(from: buffer)
@@ -199,11 +213,22 @@ final class MicRecorder: @unchecked Sendable {
             ) else { return }
             do {
                 try converter.convert(to: mono, from: buffer)
+                self.noteSignal(in: mono)
                 try file.write(from: mono)
             } catch {
                 FileHandle.standardError.write(Data("mic track write failed: \(error)\n".utf8))
             }
         }
+    }
+
+    /// Latch `signalSeen` on the first non-zero sample. Both tap paths hand
+    /// this mono Float32 buffers, so a single channel scan covers them.
+    private func noteSignal(in buffer: AVAudioPCMBuffer) {
+        guard !hasSignal, buffer.format.commonFormat == .pcmFormatFloat32 else { return }
+        guard let data = buffer.floatChannelData?[0], buffer.frameLength > 0 else { return }
+        var peak: Float = 0
+        vDSP_maxmgv(data, 1, &peak, vDSP_Length(buffer.frameLength))
+        if peak > 0 { signalSeen.withLock { $0 = true } }
     }
 
     /// The voice-processing route delivered a full second of digital silence:

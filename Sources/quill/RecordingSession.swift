@@ -11,6 +11,17 @@ final class RecordingSession {
     private let mic = MicRecorder()
     private let system = SystemAudioRecorder()
 
+    /// True once the system tap has captured any non-zero sample. An
+    /// unauthorized tap yields correctly-clocked silence rather than an error,
+    /// so this staying false is how a missing system-audio grant announces
+    /// itself. See .issues/rca-002.
+    var systemTrackHasSignal: Bool { system.hasSignal }
+
+    /// True once the mic has captured any non-zero sample. `MicRecorder` can
+    /// self-heal one known silent route (rca-001) but not the rest, so a mic
+    /// track that stays digitally silent still needs surfacing.
+    var micTrackHasSignal: Bool { mic.hasSignal }
+
     private static let folderFormat: DateFormatter = {
         let f = DateFormatter()
         f.dateFormat = "yyyy.MM.dd-HHmm"

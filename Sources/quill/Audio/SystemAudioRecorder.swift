@@ -1,6 +1,8 @@
+import Accelerate
 import AVFoundation
 import CoreAudio
 import Foundation
+import Synchronization
 
 /// Records all system audio output to a file via a Core Audio process tap
 /// (macOS 14.2+). No virtual device, no kernel extension — the tap mixes every
@@ -38,6 +40,16 @@ final class SystemAudioRecorder {
     /// Wall-clock time of the first captured buffer — the track's true start,
     /// used to offset-align the two tracks' transcript timestamps.
     private(set) var firstBufferAt: Date?
+    /// Set once any non-zero sample reaches the tap. macOS answers an
+    /// unauthorized process tap with silence rather than an error, so a
+    /// correctly-clocked all-zero track is the *only* in-process signal that
+    /// the kTCCServiceAudioCapture grant is missing. Written on the IO queue,
+    /// read from the main actor — hence the lock.
+    private let signalSeen = Mutex(false)
+
+    /// True once the tap has delivered any audible sample this session. False
+    /// on a track that is digitally silent — see `signalSeen`.
+    var hasSignal: Bool { signalSeen.withLock { $0 } }
 
     /// Start capturing system audio, encoding AAC into `url` (use a .caf
     /// extension — CAF needs no finalization pass, so a crash mid-meeting
@@ -60,6 +72,9 @@ final class SystemAudioRecorder {
             try createAggregateDevice(tapUUID: description.uuid)
             file = try makeFile(url: url, format: format)
             try installIOProc(format: format)
+            FileHandle.standardError.write(Data(
+                "system: tap=\(format) silenceGuard=\(canDetectSilence(format))\n".utf8
+            ))
         } catch {
             cleanup()
             throw error
@@ -144,6 +159,7 @@ final class SystemAudioRecorder {
                 bufferListNoCopy: inInputData,
                 deallocator: nil
             ) else { return }
+            self.noteSignal(in: buffer)
             do {
                 try file.write(from: buffer)
             } catch {
@@ -154,6 +170,37 @@ final class SystemAudioRecorder {
 
         status = AudioDeviceStart(aggregateID, procID)
         guard status == noErr else { throw RecorderError.deviceStartFailed(status) }
+    }
+
+    /// The peak scan reads raw float samples, so a non-float tap format would
+    /// silently disable the guard. Reported on start rather than left implicit
+    /// — a guard that quietly isn't running is the bug it exists to catch.
+    private func canDetectSilence(_ format: AVAudioFormat) -> Bool {
+        format.commonFormat == .pcmFormatFloat32
+    }
+
+    /// Flip `signalSeen` the first time a buffer carries anything but zeros.
+    /// Deliberately an exact-zero test, not a loudness threshold: a real
+    /// meeting has genuinely silent stretches, but a running IO proc that has
+    /// produced nothing but zeros has no legitimate cause.
+    private func noteSignal(in buffer: AVAudioPCMBuffer) {
+        guard canDetectSilence(buffer.format), !hasSignal else { return }
+        // Walk the raw buffer list rather than `floatChannelData` so this works
+        // whether the tap hands us interleaved or deinterleaved frames.
+        for b in UnsafeMutableAudioBufferListPointer(buffer.mutableAudioBufferList) {
+            guard let data = b.mData, b.mDataByteSize > 0 else { continue }
+            var peak: Float = 0
+            vDSP_maxmgv(
+                data.assumingMemoryBound(to: Float.self),
+                1,
+                &peak,
+                vDSP_Length(Int(b.mDataByteSize) / MemoryLayout<Float>.size)
+            )
+            if peak > 0 {
+                signalSeen.withLock { $0 = true }
+                return
+            }
+        }
     }
 
     private func cleanup() {

@@ -8,6 +8,7 @@ final class MenuBarController {
     private let statusItem: NSStatusItem
     private let stateLabel: NSMenuItem
     private let transcriptionLabel: NSMenuItem
+    private let warningLabel: NSMenuItem
     private let toggleItem: NSMenuItem
 
     var onToggle: (() -> Void)?
@@ -28,6 +29,11 @@ final class MenuBarController {
         transcriptionLabel.isEnabled = false
         transcriptionLabel.isHidden = true
         menu.addItem(transcriptionLabel)
+
+        warningLabel = NSMenuItem(title: "", action: nil, keyEquivalent: "")
+        warningLabel.isEnabled = false
+        warningLabel.isHidden = true
+        menu.addItem(warningLabel)
 
         menu.addItem(.separator())
 
@@ -84,6 +90,14 @@ final class MenuBarController {
     func updateTranscription(_ text: String?) {
         transcriptionLabel.title = text ?? ""
         transcriptionLabel.isHidden = text == nil
+    }
+
+    /// Show a persistent warning line in the menu; nil hides it. Used when a
+    /// recording is running but producing unusable audio — the user needs to
+    /// see it while there is still a meeting left to save.
+    func updateWarning(_ text: String?) {
+        warningLabel.title = text ?? ""
+        warningLabel.isHidden = text == nil
     }
 
     // Inlined Lucide feather SVG. Keeping it in source means the executable

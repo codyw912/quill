@@ -14,8 +14,27 @@ Swift binary, menu-bar tray, no app bundle.
 cd quill
 swift build -c release
 sudo cp .build/release/quill /usr/local/bin/quill
-quill install --launch-at-login   # optional — runs in the background on login
+quill install --app              # ~/Applications/quill.app — see below
 ```
+
+**Launch quill from the app bundle, not from a terminal.** macOS attributes the
+system-audio permission to whichever process is *responsible* for quill, and
+refuses to even show the prompt unless that process declares
+`NSAudioCaptureUsageDescription`. Terminal emulators don't, and neither does
+Raycast — so a shell-launched quill is denied silently, and an unauthorized tap
+yields digital silence rather than an error. That means a whole meeting recorded
+with an empty `them` track and nothing to tell you.
+
+Inside a bundle, TCC reads the bundle's own Info.plist, so quill holds its own
+grant no matter what starts it — Spotlight, Raycast, Dock, login item. Running
+under launchd works too (`quill install --launch-at-login`), since launchd
+makes quill its own responsible process. A bare terminal launch does not, and
+`quill` refuses to start rather than record half a meeting. `quill doctor` tells
+you which case you're in.
+
+The bundle is ad-hoc signed, which is enough to run on the machine that built
+it. Handing it to anyone else needs Developer ID signing and notarization, or
+Gatekeeper will quarantine it.
 
 **Requires:** macOS 15+ (Core Audio process taps for system audio — no
 virtual device, no kernel extension). Apple Silicon recommended for
@@ -23,7 +42,8 @@ transcription speed.
 
 ## How to use
 
-1. **Run it** (`quill` in a terminal, or the LaunchAgent).
+1. **Run it** — launch `quill.app` (Spotlight, Raycast, Dock), or install the
+   LaunchAgent. A bare terminal launch is refused; see Install above.
 2. **Click the feather in the menu bar → Start recording.** First use prompts
    for microphone and System Audio Recording permissions. While recording, the
    icon turns red with a running elapsed counter, and macOS shows the purple
@@ -97,9 +117,10 @@ Optional, at `~/.config/quill/config.json`:
 ## CLI
 
 ```sh
-quill                        # run the menu-bar daemon (^C to quit)
+quill                        # run the menu-bar daemon (launchd only; ^C to quit)
 quill run --out <dir>        # custom recordings root (default ~/Recordings)
 quill doctor                 # check permissions, recordings folder, models
+quill install --app          # build ~/Applications/quill.app (--to <path> to override)
 quill install --launch-at-login
 quill install --uninstall
 ```
@@ -119,9 +140,21 @@ quill install --uninstall
 - A global tap records *everything* the Mac plays — notification dings,
   music, all of it. Don't play Spotify during meetings (or ask for a
   per-process picker if it bothers you).
-- If recordings come out silent, check System Settings → Privacy & Security →
-  Screen & System Audio Recording.
+- If the system track comes out silent, run `quill doctor` first — the usual
+  cause is launch context, not the permission toggle. Failing that, check
+  System Settings → Privacy & Security → Screen & System Audio Recording.
+- While recording, quill watches the system track and warns in the menu bar
+  (and by notification) if it is still digitally silent after 30 seconds.
+- `me` vs `them` is mic-vs-system, not speaker identification. Two people
+  sharing your laptop's microphone both come out as `me`.
 - Parakeet v2 is English-only. Other languages will come with the Whisper
   engine.
 - The binary embeds its Info.plist (`__TEXT,__info_plist`) so TCC can
   attribute permissions to quill itself when running as a LaunchAgent.
+- The binary is adhoc-signed, so every `swift build` (and every
+  `install --app`, which re-signs) changes its cdhash and drops the granted
+  permissions. Expect to approve the prompt again after rebuilding. A stable
+  Developer ID signature would make grants survive updates.
+- `install --app` bundles the *running* binary, not `/usr/local/bin/quill` —
+  so `swift build -c release && .build/release/quill install --app` ships what
+  you just built. The printed `from:` line says which binary went in.
