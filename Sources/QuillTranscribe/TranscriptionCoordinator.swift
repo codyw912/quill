@@ -9,8 +9,8 @@ import Synchronization
 /// `resumePending()` rescans at launch, so a crash or quit mid-transcription
 /// just retries on next run. Failures append to the session's transcribe.log
 /// and never block later jobs.
-actor TranscriptionCoordinator {
-    enum Status: Sendable {
+public actor TranscriptionCoordinator {
+    public enum Status: Sendable {
         case idle
         case transcribing(session: String, queued: Int)
         case failed(session: String)
@@ -25,13 +25,15 @@ actor TranscriptionCoordinator {
     // guarantee its terminationHandler fires if the last reference to it drops.
     private var runningHooks: [Process] = []
 
-    func setStatusHandler(_ handler: @escaping @Sendable (Status) -> Void) {
+    public init() {}
+
+    public func setStatusHandler(_ handler: @escaping @Sendable (Status) -> Void) {
         statusHandler = handler
     }
 
     /// Queue a finished session. With transcription disabled in config, the
     /// on_stop hook still fires — it just gets an untranscribed folder.
-    func enqueue(_ sessionDir: URL) {
+    public func enqueue(_ sessionDir: URL) {
         guard Config.transcriptionEnabled() else {
             runHook(for: sessionDir)
             return
@@ -43,7 +45,7 @@ actor TranscriptionCoordinator {
     /// Scan the recordings root for sessions that finished (meta.json exists)
     /// but were never transcribed. Folder names sort chronologically, so
     /// oldest-first is a name sort.
-    func resumePending(root: URL) {
+    public func resumePending(root: URL) {
         guard Config.transcriptionEnabled() else { return }
         guard let entries = try? FileManager.default.contentsOfDirectory(
             at: root, includingPropertiesForKeys: nil

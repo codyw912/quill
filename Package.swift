@@ -6,6 +6,7 @@ let package = Package(
     platforms: [.macOS(.v15)],
     products: [
         .library(name: "QuillCapture", targets: ["QuillCapture"]),
+        .library(name: "QuillTranscribe", targets: ["QuillTranscribe"]),
     ],
     dependencies: [
         .package(url: "https://github.com/apple/swift-argument-parser.git", from: "1.3.0"),
@@ -13,10 +14,18 @@ let package = Package(
     ],
     targets: [
         .target(name: "QuillCapture"),
+        .target(
+            name: "QuillTranscribe",
+            dependencies: [
+                "QuillCapture",
+                .product(name: "FluidAudio", package: "FluidAudio"),
+            ]
+        ),
         .executableTarget(
             name: "quill",
             dependencies: [
                 "QuillCapture",
+                "QuillTranscribe",
                 .product(name: "ArgumentParser", package: "swift-argument-parser"),
                 .product(name: "FluidAudio", package: "FluidAudio"),
             ],
