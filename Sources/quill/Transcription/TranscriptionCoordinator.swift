@@ -1,4 +1,5 @@
 import Foundation
+import Synchronization
 
 /// Post-recording pipeline: a serial queue of session folders to transcribe.
 /// mic.caf → "me", system.caf → "them"; each track's segments are shifted by
@@ -19,6 +20,9 @@ actor TranscriptionCoordinator {
     private var engine: TranscriptionEngine?
     private var lastFailure: String?
     private var statusHandler: (@Sendable (Status) -> Void)?
+    // Keeps in-flight hook processes alive until they exit — Process doesn't
+    // guarantee its terminationHandler fires if the last reference to it drops.
+    private var runningHooks: [Process] = []
 
     func setStatusHandler(_ handler: @escaping @Sendable (Status) -> Void) {
         statusHandler = handler
@@ -157,16 +161,71 @@ actor TranscriptionCoordinator {
     /// Fires the configured on_stop shell command with the session directory
     /// as its sole argument, after the transcript exists (or immediately after
     /// recording when transcription is disabled).
+    ///
+    /// A hook that fails to *launch* was already logged below; a hook that
+    /// launches and then fails was invisible before this — quill-notes (the
+    /// hook this exists for) exits non-zero with a diagnostic on stderr, and
+    /// that stderr was going nowhere a menu-bar app's user could ever see it.
+    /// We wait for the exit and capture stderr, but not by blocking this
+    /// actor on the subprocess: that would stall the transcription queue (and
+    /// anything else waiting on this actor) for as long as the hook runs.
+    /// Process's own terminationHandler fires on its own thread, so we let it
+    /// finish the log line and just hop back onto the actor to write it.
     private func runHook(for dir: URL) {
         guard let cmd = Config.onStop() else { return }
         let task = Process()
         task.launchPath = "/bin/sh"
         task.arguments = ["-c", "\(cmd) \"$0\"", dir.path]
+        let stderrPipe = Pipe()
+        task.standardError = stderrPipe
+        // A hook that writes more than a pipe's buffer (tens of KB) before
+        // exiting would block on write() forever if nothing read until
+        // termination — drain continuously instead of waiting to read it all
+        // at once. The remaining readDataToEndOfFile() in the termination
+        // handler only ever picks up whatever arrived after the last chunk.
+        let stderr = Mutex(Data())
+        stderrPipe.fileHandleForReading.readabilityHandler = { handle in
+            let chunk = handle.availableData
+            if chunk.isEmpty {
+                handle.readabilityHandler = nil
+            } else {
+                stderr.withLock { $0.append(chunk) }
+            }
+        }
+        task.terminationHandler = { [weak self] process in
+            let handle = stderrPipe.fileHandleForReading
+            handle.readabilityHandler = nil
+            let tail = handle.readDataToEndOfFile()
+            let stderrData = stderr.withLock { $0 } + tail
+            Task { await self?.logHookResult(dir, process, stderrData) }
+        }
         do {
             try task.run()
+            runningHooks.append(task)
         } catch {
             log(dir, "on_stop hook failed to launch: \(error)")
         }
+    }
+
+    /// Logs the outcome of a hook that already launched. On success this is
+    /// deliberately terse — a debugging aid, not something anyone reads on
+    /// the happy path. On failure the whole point is the stderr tail: that's
+    /// where quill-notes explains itself (missing config, unreachable model,
+    /// transcript not ready), so a few hundred characters of it beats a bare
+    /// exit code every time.
+    private func logHookResult(_ dir: URL, _ process: Process, _ stderrData: Data) {
+        runningHooks.removeAll { $0 === process }
+        let status = process.terminationStatus
+        guard status != 0 else {
+            log(dir, "on_stop hook exited 0")
+            return
+        }
+        var stderr = String(decoding: stderrData, as: UTF8.self)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        if stderr.count > 400 {
+            stderr = String(stderr.prefix(400)) + "…"
+        }
+        log(dir, "on_stop hook exited \(status)" + (stderr.isEmpty ? "" : ": \(stderr)"))
     }
 
     private func log(_ dir: URL, _ message: String) {
