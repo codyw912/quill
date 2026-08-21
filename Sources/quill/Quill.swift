@@ -1,6 +1,8 @@
 import AppKit
 import ArgumentParser
 import Foundation
+import QuillCapture
+import QuillTranscribe
 
 @main
 struct Quill: ParsableCommand {
@@ -33,7 +35,7 @@ struct Run: ParsableCommand {
 
         // Non-blocking: permissions prompt on first recording, so warnings at
         // startup are informational, not fatal.
-        let checks = DoctorReport.run(recordingsRoot: root)
+        let checks = DoctorReport.captureChecks(recordingsRoot: root) + [TranscriptionCheck.run()]
         if !DoctorReport.allOK(checks) {
             FileHandle.standardError.write(Data("startup checks failed:\n".utf8))
             DoctorReport.print(checks, toStandardError: true)
@@ -66,7 +68,8 @@ struct Doctor: ParsableCommand {
     )
 
     func run() throws {
-        let checks = DoctorReport.run(recordingsRoot: Config.resolveRoot(cliOverride: nil))
+        let root = Config.resolveRoot(cliOverride: nil)
+        let checks = DoctorReport.captureChecks(recordingsRoot: root) + [TranscriptionCheck.run()]
         DoctorReport.print(checks)
         if !DoctorReport.allOK(checks) {
             throw ExitCode(1)

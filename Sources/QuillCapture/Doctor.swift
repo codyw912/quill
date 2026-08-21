@@ -1,28 +1,31 @@
 import AVFoundation
 import Darwin
-import FluidAudio
 import Foundation
 
-enum CheckStatus {
+public enum CheckStatus {
     case ok
     case warn(String)
     case fail(String)
 }
 
-struct Check {
-    let name: String
-    let status: CheckStatus
-    let remediation: String?
+public struct Check {
+    public let name: String
+    public let status: CheckStatus
+    public let remediation: String?
+
+    public init(name: String, status: CheckStatus, remediation: String?) {
+        self.name = name
+        self.status = status
+        self.remediation = remediation
+    }
 }
 
-enum DoctorReport {
-    static func run(recordingsRoot: URL) -> [Check] {
-        [
-            checkMicrophone(),
-            checkSystemAudio(),
-            checkRecordingsRoot(recordingsRoot),
-            checkTranscription(),
-        ]
+public enum DoctorReport {
+    /// The checks that belong to capture. Transcription has its own check in
+    /// QuillTranscribe; the caller composes them, so a consumer that links
+    /// capture alone still gets a complete report of what it actually uses.
+    public static func captureChecks(recordingsRoot: URL) -> [Check] {
+        [checkMicrophone(), checkSystemAudio(), checkRecordingsRoot(recordingsRoot)]
     }
 
     static func checkMicrophone() -> Check {
@@ -88,7 +91,7 @@ enum DoctorReport {
     /// `NSAudioCaptureUsageDescription`. The refusal is silent and the tap then
     /// yields digital silence rather than an error, which is how a whole
     /// meeting gets recorded with an empty `them` track. See .issues/rca-002.
-    enum LaunchContext {
+    public enum LaunchContext {
         /// Started by launchd: quill is its own responsible process, and its
         /// own embedded Info.plist carries the usage description.
         case responsibleForSelf
@@ -111,7 +114,7 @@ enum DoctorReport {
     /// hence dlsym and a conservative fallback: if it ever disappears we
     /// report the state as unknown rather than claim a launch context we
     /// cannot verify.
-    static func launchContext() -> LaunchContext {
+    public static func launchContext() -> LaunchContext {
         guard let responsible = responsiblePID() else { return .unknown }
         guard responsible != getpid() else { return .responsibleForSelf }
         guard
@@ -191,32 +194,11 @@ enum DoctorReport {
         return Check(name: "recordings folder", status: .ok, remediation: nil)
     }
 
-    /// Never discover a missing model after an important meeting: report
-    /// whether the parakeet models are already in FluidAudio's cache.
-    static func checkTranscription() -> Check {
-        guard Config.transcriptionEnabled() else {
-            return Check(
-                name: "transcription",
-                status: .warn("disabled in config"),
-                remediation: nil
-            )
-        }
-        let cache = AsrModels.defaultCacheDirectory(for: .v2)
-        if AsrModels.modelsExist(at: cache, version: .v2) {
-            return Check(name: "transcription", status: .ok, remediation: nil)
-        }
-        return Check(
-            name: "transcription",
-            status: .warn("parakeet models not downloaded (~600 MB)"),
-            remediation: "downloads automatically on first transcription — record a short test session while online"
-        )
-    }
-
     /// `toStandardError` keeps a failure report on the same stream as the
     /// message introducing it — the LaunchAgent sends stdout and stderr to
     /// different files, so a split report reads as a bare "startup checks
     /// failed:" with the reason nowhere in sight.
-    static func print(_ checks: [Check], toStandardError: Bool = false) {
+    public static func print(_ checks: [Check], toStandardError: Bool = false) {
         func emit(_ line: String) {
             if toStandardError {
                 FileHandle.standardError.write(Data((line + "\n").utf8))
@@ -240,7 +222,7 @@ enum DoctorReport {
     }
 
     /// True if no checks are in a hard-fail state. Warnings don't block.
-    static func allOK(_ checks: [Check]) -> Bool {
+    public static func allOK(_ checks: [Check]) -> Bool {
         checks.allSatisfy {
             if case .fail = $0.status { return false }
             return true

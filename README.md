@@ -127,13 +127,29 @@ quill install --uninstall
 
 ## Stack
 
-- **Swift** — single SPM executable target
+- **Swift** — an SPM package: two library targets (`QuillCapture`,
+  `QuillTranscribe`) plus the `quill` executable target that links both
 - **Core Audio process tap** (`AudioHardwareCreateProcessTap`, macOS 14.2+) —
   system audio capture via a private aggregate device
 - **AVAudioEngine** — mic capture
 - **AVAudioFile** — streaming AAC encode into CAF
 - **FluidAudio / Parakeet** — on-device Core ML transcription
 - **NSStatusItem** — the whole UI
+
+## Using quill as a library
+
+quill exposes two library products:
+
+| Product | Contents |
+|---|---|
+| `QuillCapture` | recording, config, the launch-context check — no FluidAudio |
+| `QuillTranscribe` | transcription engines and the coordinator — depends on `QuillCapture` |
+
+They are split because `transcript.json` is derived entirely from the recorded
+`.caf` files after the fact. Which transcription engine to use, and whether to
+download ~600 MB of model weights at all, are properties of the machine and the
+user rather than of the act of recording — so a consumer can link `QuillCapture`
+alone and decide transcription for itself.
 
 ## Gotchas
 
